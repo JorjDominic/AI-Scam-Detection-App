@@ -1,1 +1,1 @@
-# AI-Scam-Detection-App
+# AI-Scam-Detection-App - EXTENSION AND WEB BROWSER
