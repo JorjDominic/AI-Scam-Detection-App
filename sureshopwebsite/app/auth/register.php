@@ -46,79 +46,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - ScamGuard</title>
-
+    <title>Register - SureShop</title>
+    
+    <!-- CSS Only -->
     <link rel="stylesheet" href="../assets/css/styles.css">
-
+    <link rel="stylesheet" href="../assets/css/landing.css">
+    <link rel="stylesheet" href="../assets/css/auth.css">
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <!-- Google Identity -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
-<nav class="navbar">
-    <div class="container">
-        <div class="logo">ScamGuard</div>
-        <div class="nav-links">
-            <a href="../index.php">Home</a>
+<!-- Header/Navbar -->
+<?php include '../view/layouts/header.php'; ?>
+
+<!-- Auth Container -->
+<main class="ss-auth-main">
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1>Create Account</h1>
+            
+            <?php if ($error): ?>
+                <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+            
+            <!-- Local Registration Form -->
+            <form method="POST">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="you@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required placeholder="••••••••">
+                    <small>Minimum 6 characters</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required placeholder="••••••••">
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
+            </form>
+            
+            <div class="auth-links">
+                <p>Already have an account? <a href="login.php">Sign in</a></p>
+            </div>
+            
+            <hr>
+            
+            <!-- Google Registration -->
+            <div class="google-auth-wrap">
+                <div id="g_id_onload"
+                     data-client_id="53957248599-0qmgurtc3555tav2jrj1hom7t2o5b77d.apps.googleusercontent.com"
+                     data-callback="handleGoogleRegister"
+                     data-auto_prompt="false">
+                </div>
+                
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-shape="rectangular"
+                     data-theme="outline"
+                     data-text="signup_with"
+                     data-size="large"
+                     data-width="100%">
+                </div>
+            </div>
         </div>
     </div>
-</nav>
+</main>
 
-<div class="auth-container">
-    <div class="auth-card">
-        <h1>Create Account</h1>
-
-        <?php if ($error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-
-        <!-- LOCAL REGISTER -->
-        <form method="POST">
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" required>
-            </div>
-
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required>
-            </div>
-
-            <div class="form-group">
-                <label>Confirm Password</label>
-                <input type="password" name="confirm_password" required>
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-block">
-                Sign Up
-            </button>
-        </form>
-
-        <div class="auth-links">
-            <p>Already have an account? <a href="login.php">Login</a></p>
-        </div>
-
-        <hr>
-
-        <!-- GOOGLE REGISTER -->
-        <div id="g_id_onload"
-             data-client_id="53957248599-0qmgurtc3555tav2jrj1hom7t2o5b77d.apps.googleusercontent.com"
-             data-callback="handleGoogleRegister"
-             data-auto_prompt="false">
-        </div>
-
-        <div class="g_id_signin"
-             data-type="standard"
-             data-shape="rectangular"
-             data-theme="outline"
-             data-text="signup_with"
-             data-size="large"
-             data-width="100%">
-        </div>
-    </div>
-</div>
+<!-- Footer -->
+<?php include '../view/layouts/footer.php'; ?>
 
 <script>
+// Google Registration Handler
 function handleGoogleRegister(response) {
     fetch("google_register.php", {
         method: "POST",
