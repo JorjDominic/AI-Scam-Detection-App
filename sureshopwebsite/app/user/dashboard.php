@@ -2,46 +2,68 @@
 session_start();
 require_once __DIR__ . '/../config/db.php';
 
+// SERVER SECRET - must match scan.php
+const SERVER_SECRET = 'CHANGE_THIS_TO_LONG_RANDOM_SECRET';
+
+// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: auth/login.php');
     exit;
 }
-$extension_key = $_SESSION['extension_key'] ?? null;
-unset($_SESSION['extension_key']);
 
-// Enforce profile completion
+$userId = $_SESSION['user_id'];
+
+// Generate anonymized user ID
+$anonUserId = hash_hmac('sha256', (string)$userId, SERVER_SECRET);
+
+/* Load user info */
 $stmt = $pdo->prepare("SELECT username, email FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch();
+$stmt->execute([$userId]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$user['username']) {
-    header('Location: complete_profile.php');
+if (!$user) {
+    session_destroy();
+    header('Location: auth/login.php');
     exit;
 }
-// Check if extension is already activated
+
+/* Extension activation status */
 $stmt = $pdo->prepare("
     SELECT COUNT(*) 
     FROM access_tokens 
     WHERE user_id = ? AND revoked = 0
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$userId]);
 $is_extension_activated = $stmt->fetchColumn() > 0;
-// Mock user data
+
+/* Extension key */
+$extension_key = $_SESSION['extension_key'] ?? null;
+unset($_SESSION['extension_key']);
+
+/* =========================
+   REAL USER STATS
+   ========================= */
+
+$stmt = $pdo->prepare("
+    SELECT 
+        COUNT(*) as total_scans,
+        SUM(CASE WHEN risk_level='High' THEN 1 ELSE 0 END) as high_risk_found,
+        SUM(CASE WHEN risk_level!='High' THEN 1 ELSE 0 END) as protected_items
+    FROM scans
+    WHERE anon_user_id = ?
+");
+$stmt->execute([$anonUserId]);
+$stats = $stmt->fetch(PDO::FETCH_ASSOC);
+
 $user_stats = [
-    'total_scans' => 47,
-    'website_scans' => 23,
-    'product_scans' => 15,
-    'seller_scans' => 9,
-    'high_risk_found' => 8,
-    'protected_items' => 39
+    'total_scans' => (int)($stats['total_scans'] ?? 0),
+    'website_scans' => 0,
+    'product_scans' => (int)($stats['total_scans'] ?? 0),
+    'seller_scans' => 0,
+    'high_risk_found' => (int)($stats['high_risk_found'] ?? 0),
+    'protected_items' => (int)($stats['protected_items'] ?? 0)
 ];
 
-$recent_scans = [
-    ['type' => 'Website', 'target' => 'amazon.com', 'risk' => 'Low', 'time' => '2 hours ago'],
-    ['type' => 'Product', 'target' => 'Wireless Earbuds', 'risk' => 'Medium', 'time' => '1 day ago'],
-    ['type' => 'Seller', 'target' => 'TechDealsPro', 'risk' => 'Low', 'time' => '2 days ago'],
-    ['type' => 'Website', 'target' => 'suspicious-shop.net', 'risk' => 'High', 'time' => '3 days ago'],
-];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -186,7 +208,7 @@ $recent_scans = [
         
         .dashboard-main {
             flex: 1;
-            padding-top: 90px; /* Space for fixed header */
+            padding-top: 90px;
             padding-bottom: 2rem;
         }
         
@@ -194,6 +216,18 @@ $recent_scans = [
             max-width: 1400px;
             margin: 0 auto;
             padding: 0 20px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #6b7280;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #d1d5db;
+            margin-bottom: 1rem;
         }
     </style>
 </head>
@@ -256,34 +290,36 @@ $recent_scans = [
                     </a>
                 </div>
             </section>
-<section class="table-section">
-    <h2><i class="fas fa-puzzle-piece"></i> Browser Extension</h2>
 
-    <?php if ($is_extension_activated): ?>
-        <div class="activation-success">
-            <p><strong>✅ Extension Activated</strong></p>
-            <p>Your browser extension is successfully linked to your account.</p>
-        </div>
+            <!-- Browser Extension Section -->
+            <section class="table-section">
+                <h2><i class="fas fa-puzzle-piece"></i> Browser Extension</h2>
 
-    <?php elseif (!empty($extension_key)): ?>
-        <div class="activation-key-box">
-            <p><strong>Your Activation Key</strong> (valid for 10 minutes)</p>
-            <code><?php echo htmlspecialchars($extension_key); ?></code>
-            <p class="warning-text">
-                Paste this key into the SureShop browser extension.
-                This key can only be used once.
-            </p>
-        </div>
+                <?php if ($is_extension_activated): ?>
+                    <div class="activation-success">
+                        <p><strong>✅ Extension Activated</strong></p>
+                        <p>Your browser extension is successfully linked to your account.</p>
+                    </div>
 
-    <?php else: ?>
-        <p>Activate your browser extension to scan Shopee products.</p>
-        <form method="POST" action="../controller/generate_extension_key.php">
-            <button type="submit" class="action-btn btn-primary">
-                <i class="fas fa-key"></i> Generate Activation Key
-            </button>
-        </form>
-    <?php endif; ?>
-</section>
+                <?php elseif (!empty($extension_key)): ?>
+                    <div class="activation-key-box">
+                        <p><strong>Your Activation Key</strong> (valid for 10 minutes)</p>
+                        <code><?php echo htmlspecialchars($extension_key); ?></code>
+                        <p class="warning-text">
+                            Paste this key into the SureShop browser extension.
+                            This key can only be used once.
+                        </p>
+                    </div>
+
+                <?php else: ?>
+                    <p>Activate your browser extension to scan Shopee products.</p>
+                    <form method="POST" action="../controller/generate_extension_key.php">
+                        <button type="submit" class="action-btn btn-primary">
+                            <i class="fas fa-key"></i> Generate Activation Key
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </section>
 
             <!-- Stats -->
             <section class="stats-section">
@@ -298,21 +334,19 @@ $recent_scans = [
                         </div>
                         <div class="stat-number"><?php echo $user_stats['total_scans']; ?></div>
                         <div class="stat-meta">
-                            <?php echo $user_stats['website_scans']; ?> websites • 
-                            <?php echo $user_stats['product_scans']; ?> products • 
-                            <?php echo $user_stats['seller_scans']; ?> sellers
+                            <?php echo $user_stats['product_scans']; ?> products scanned
                         </div>
                     </div>
                     
                     <div class="stat-card <?php echo $user_stats['high_risk_found'] > 0 ? 'risk-high' : 'risk-low'; ?>">
                         <div class="stat-card-header">
-                            <h3>Scams Detected</h3>
+                            <h3>High Risk</h3>
                             <div class="stat-icon">
                                 <i class="fas fa-shield-alt"></i>
                             </div>
                         </div>
                         <div class="stat-number"><?php echo $user_stats['high_risk_found']; ?></div>
-                        <div class="stat-meta">Potential scams blocked</div>
+                        <div class="stat-meta">Potential scams detected</div>
                     </div>
                     
                     <div class="stat-card">
@@ -323,7 +357,7 @@ $recent_scans = [
                             </div>
                         </div>
                         <div class="stat-number"><?php echo $user_stats['protected_items']; ?></div>
-                        <div class="stat-meta">Safe items in your history</div>
+                        <div class="stat-meta">Safe items verified</div>
                     </div>
                 </div>
             </section>
@@ -331,36 +365,57 @@ $recent_scans = [
             <!-- Recent Scans -->
             <section class="table-section">
                 <h2><i class="fas fa-clock"></i> Recent Scans</h2>
-                <table class="dashboard-table">
-                    <thead>
-                        <tr>
-                            <th>Type</th>
-                            <th>Target</th>
-                            <th>Risk Level</th>
-                            <th>Time</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($recent_scans as $scan): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($scan['type']); ?></td>
-                            <td><?php echo htmlspecialchars($scan['target']); ?></td>
-                            <td>
-                                <span class="risk-badge risk-<?php echo strtolower($scan['risk']); ?>">
-                                    <?php echo htmlspecialchars($scan['risk']); ?>
-                                </span>
-                            </td>
-                            <td><?php echo htmlspecialchars($scan['time']); ?></td>
-                            <td>
-                                <a href="scan-details.php" class="action-btn btn-secondary">
-                                    <i class="fas fa-eye"></i> View
-                                </a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                
+                <?php
+                $stmt = $pdo->prepare("
+                    SELECT scan_type, product_name, risk_level, created_at, id
+                    FROM scans
+                    WHERE anon_user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                ");
+                $stmt->execute([$anonUserId]);
+                $scans = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (empty($scans)):
+                ?>
+                    <div class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <h3>No scans yet</h3>
+                        <p>Activate your browser extension and start scanning products to see your history here.</p>
+                    </div>
+                <?php else: ?>
+                    <table class="dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Product</th>
+                                <th>Risk Level</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($scans as $scan): ?>
+                            <tr>
+                                <td><?php echo ucfirst(htmlspecialchars($scan['scan_type'])); ?></td>
+                                <td><?php echo htmlspecialchars($scan['product_name']); ?></td>
+                                <td>
+                                    <span class="risk-badge risk-<?php echo strtolower($scan['risk_level']); ?>">
+                                        <?php echo htmlspecialchars($scan['risk_level']); ?>
+                                    </span>
+                                </td>
+                                <td><?php echo date("M d, Y H:i", strtotime($scan['created_at'])); ?></td>
+                                <td>
+                                    <a href="scan-details.php?id=<?php echo $scan['id']; ?>" class="action-btn btn-secondary">
+                                        <i class="fas fa-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
             </section>
         </div>
     </main>
